@@ -1,0 +1,41 @@
+-- =========================================================
+-- 権限の確認テスト（ステップ0-5）
+-- 権限を変えたら、これを1文ずつ流して設計どおりか確かめる
+--
+-- 注意：Snowsightでは二次ロール（secondary roles）が既定でオン。
+-- 自分に付いている他のロールの権限まで効いてしまうので、
+-- ロールを切り替えるたびに USE SECONDARY ROLES NONE で切ってから試す
+-- =========================================================
+
+-- ① LOADERとしてRAWに表を作る（Fivetranの代わり）
+USE ROLE LOADER;
+USE SECONDARY ROLES NONE;
+USE WAREHOUSE LOADING_WH;
+CREATE SCHEMA IF NOT EXISTS RAW.TEST_SCHEMA;
+CREATE OR REPLACE TABLE RAW.TEST_SCHEMA.T (id INT);
+INSERT INTO RAW.TEST_SCHEMA.T VALUES (1);
+
+-- ② TRANSFORMERで、その表を読めるか（FUTUREの権限の確認）
+USE ROLE TRANSFORMER;
+USE SECONDARY ROLES NONE;
+USE WAREHOUSE TRANSFORMING_WH;
+SELECT * FROM RAW.TEST_SCHEMA.T;          -- 1行返ればOK
+
+-- ③ TRANSFORMERとしてANALYTICSに表を作る（dbtの代わり）
+CREATE SCHEMA IF NOT EXISTS ANALYTICS.TEST_SCHEMA;
+CREATE OR REPLACE TABLE ANALYTICS.TEST_SCHEMA.T AS
+  SELECT * FROM RAW.TEST_SCHEMA.T;
+
+-- ④ REPORTERは、ANALYTICSは読めてRAWは読めない
+USE ROLE REPORTER;
+USE SECONDARY ROLES NONE;
+USE WAREHOUSE REPORTING_WH;
+SELECT * FROM ANALYTICS.TEST_SCHEMA.T;    -- 1行返ればOK
+SELECT * FROM RAW.TEST_SCHEMA.T;          -- エラーになればOK
+
+-- 後片付け
+--   持ち主はLOADER・TRANSFORMERだが、SYSADMINはその2つのロールを
+--   受け継いでいる（ロール階層）ので消せる
+USE ROLE SYSADMIN;
+DROP SCHEMA IF EXISTS RAW.TEST_SCHEMA;
+DROP SCHEMA IF EXISTS ANALYTICS.TEST_SCHEMA;
